@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACEest Fitness & Gym</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 100 100%27><text y=%27.9em%27 font-size=%2790%27>💪</text></svg>">
+<style>
+  :root { --gold:#d4af37; --bg:#1a1a1a; --card:#262626; --input:#333; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:Arial,Helvetica,sans-serif; background:var(--bg); color:#eee; }
+  header { background:var(--gold); color:#000; text-align:center; padding:18px; font-size:26px; font-weight:bold; }
+  main { display:grid; grid-template-columns:repeat(auto-fit,minmax(340px,1fr)); gap:16px; padding:20px; max-width:1200px; margin:auto; }
+  section { background:var(--card); border:1px solid #444; border-radius:8px; padding:16px; }
+  h2 { margin:0 0 12px; color:var(--gold); font-size:18px; }
+  label { display:block; margin:8px 0 3px; font-size:13px; color:#bbb; }
+  input,select { width:100%; padding:8px; background:var(--input); color:#fff; border:1px solid #555; border-radius:4px; }
+  button { margin-top:12px; padding:9px 16px; background:var(--gold); color:#000; border:0; border-radius:4px; font-weight:bold; cursor:pointer; }
+  button:hover { filter:brightness(1.1); }
+  pre { background:#111; padding:10px; border-radius:4px; white-space:pre-wrap; min-height:40px; margin:10px 0 0; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th,td { padding:6px; border-bottom:1px solid #444; text-align:left; }
+  .msg { margin-top:8px; font-size:13px; min-height:18px; }
+  .ok { color:#2ecc71; } .err { color:#e74c3c; }
+  .row { display:flex; gap:8px; } .row > div { flex:1; }
+</style>
+</head>
+<body>
+<header style="{{ 'background:#2e7d32;color:#fff' if version.startswith('2') else '' }}">ACEest FUNCTIONAL FITNESS <small style="font-size:14px">v{{ version }}</small></header>
+<main>
+
+  <section>
+    <h2>Training Programs</h2>
+    <label>Select program</label>
+    <select id="prog" onchange="showProgram()"></select>
+    <label>Weekly training plan</label><pre id="workout"></pre>
+    <label>Nutrition plan</label><pre id="diet"></pre>
+  </section>
+
+  <section>
+    <h2>Calorie &amp; BMI Calculator</h2>
+    <label>Program</label><select id="calProg"></select>
+    <div class="row">
+      <div><label>Weight (kg)</label><input id="calW" type="number" value="70"></div>
+      <div><label>Height (cm)</label><input id="calH" type="number" value="175"></div>
+    </div>
+    <button onclick="calc()">Calculate</button>
+    <pre id="calOut">Estimated Calories: --</pre>
+  </section>
+
+  <section>
+    <h2>Add Client</h2>
+    <label>Name</label><input id="cName">
+    <div class="row">
+      <div><label>Age</label><input id="cAge" type="number"></div>
+      <div><label>Weight (kg)</label><input id="cW" type="number"></div>
+      <div><label>Height (cm)</label><input id="cH" type="number"></div>
+    </div>
+    <label>Program</label><select id="cProg"></select>
+    <label>Membership end</label><input id="cEnd" type="date">
+    <button onclick="addClient()">Save Client</button>
+    <div id="cMsg" class="msg"></div>
+  </section>
+
+  <section>
+    <h2>Clients</h2>
+    <table>
+      <thead><tr><th>Name</th><th>Program</th><th>kcal</th><th></th></tr></thead>
+      <tbody id="clients"></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Client Details</h2>
+    <label>Client</label><select id="sel" onchange="loadDetails()"></select>
+    <div class="row">
+      <div><label>Weekly adherence (%)</label><input id="adh" type="number" min="0" max="100" value="80"></div>
+      <div><button onclick="addProgress()">Save Progress</button></div>
+    </div>
+    <div class="row">
+      <div><label>Workout type</label><input id="wType" placeholder="Strength"></div>
+      <div><label>Minutes</label><input id="wDur" type="number" value="45"></div>
+    </div>
+    <button onclick="addWorkout()">Log Workout</button>
+    <div id="dMsg" class="msg"></div>
+    <pre id="details">Select a client.</pre>
+  </section>
+
+</main>
+<script>
+let programs = {};
+const $ = id => document.getElementById(id);
+const api = async (url, opts) => {
+  const r = await fetch(url, opts);
+  return { ok: r.ok, data: await r.json() };
+};
+const post = (url, body) => api(url, { method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+function say(el, res, okText) {
+  $(el).className = "msg " + (res.ok ? "ok" : "err");
+  $(el).textContent = res.ok ? okText : res.data.error;
+}
+
+async function init() {
+  const { data } = await api("/programs");
+  const opts = data.programs.map(p => `<option>${p}</option>`).join("");
+  ["prog","calProg","cProg"].forEach(id => $(id).innerHTML = opts);
+  showProgram(); loadClients();
+}
+async function showProgram() {
+  const { data } = await api("/programs/" + encodeURIComponent($("prog").value));
+  $("workout").textContent = data.workout; $("diet").textContent = data.diet;
+}
+async function calc() {
+  const w = $("calW").value, h = $("calH").value;
+  const c = await api(`/calories?program=${encodeURIComponent($("calProg").value)}&weight=${w}`);
+  const b = await api(`/bmi?weight=${w}&height=${h}`);
+  $("calOut").textContent =
+    (c.ok ? `Estimated Calories: ${c.data.calories} kcal` : c.data.error) + "\n" +
+    (b.ok ? `BMI: ${b.data.bmi} (${b.data.category})` : b.data.error);
+}
+async function addClient() {
+  const num = id => $(id).value ? Number($(id).value) : null;
+  const res = await post("/clients", { name:$("cName").value, age:num("cAge"), weight:num("cW"),
+    height:num("cH"), program:$("cProg").value, membership_end:$("cEnd").value || null });
+  say("cMsg", res, res.ok && res.data.message);
+  if (res.ok) loadClients();
+}
+async function loadClients() {
+  const { data } = await api("/clients");
+  $("clients").innerHTML = data.clients.map(c =>
+    `<tr><td>${c.name}</td><td>${c.program || "-"}</td><td>${c.calories || "-"}</td>
+     <td><button onclick="delClient(\x27${c.name}\x27)">Delete</button></td></tr>`).join("")
+    || "<tr><td colspan=4>No clients yet</td></tr>";
+  $("sel").innerHTML = data.clients.map(c => `<option>${c.name}</option>`).join("");
+  loadDetails();
+}
+async function delClient(n) {
+  await api("/clients/" + encodeURIComponent(n), { method:"DELETE" }); loadClients();
+}
+async function loadDetails() {
+  const n = $("sel").value;
+  if (!n) { $("details").textContent = "Select a client."; return; }
+  const e = encodeURIComponent(n);
+  const [p, w, m, b] = await Promise.all([api(`/clients/${e}/progress`), api(`/clients/${e}/workouts`),
+    api(`/clients/${e}/membership`), api(`/clients/${e}/bmi`)]);
+  $("details").textContent =
+    `Membership: ${m.data.membership}\n` +
+    (b.ok ? `BMI: ${b.data.bmi} (${b.data.category})\n` : "") +
+    `Average adherence: ${p.data.average_adherence}%\n\nWorkouts:\n` +
+    (w.data.workouts.map(x => `${x.date}  ${x.workout_type}  ${x.duration_min} min`).join("\n") || "none");
+}
+async function addProgress() {
+  const e = encodeURIComponent($("sel").value);
+  const res = await post(`/clients/${e}/progress`, { adherence: parseInt($("adh").value) });
+  say("dMsg", res, "Progress saved"); loadDetails();
+}
+async function addWorkout() {
+  const e = encodeURIComponent($("sel").value);
+  const res = await post(`/clients/${e}/workouts`, { workout_type:$("wType").value, duration_min:parseInt($("wDur").value) });
+  say("dMsg", res, "Workout logged"); loadDetails();
+}
+init();
+</script>
+</body>
+</html>

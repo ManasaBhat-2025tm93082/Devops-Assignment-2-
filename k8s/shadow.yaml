@@ -1,0 +1,66 @@
+# Shadow deployment: live traffic is served by 1.0.0 while a copy of every request is mirrored
+# to 2.0.0 (its responses are discarded). Needs the NGINX ingress controller.
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: aceest-live}
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: aceest-shadow-demo, role: live}
+  template:
+    metadata:
+      labels: {app: aceest-shadow-demo, role: live}
+    spec:
+      containers:
+        - name: aceest
+          image: DOCKERHUB_USER/aceest-fitness:1.0.0
+          ports: [{containerPort: 5000}]
+          readinessProbe:
+            httpGet: {path: /health, port: 5000}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: aceest-shadow}
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: aceest-shadow-demo, role: shadow}
+  template:
+    metadata:
+      labels: {app: aceest-shadow-demo, role: shadow}
+    spec:
+      containers:
+        - name: aceest
+          image: DOCKERHUB_USER/aceest-fitness:2.0.0
+          ports: [{containerPort: 5000}]
+          readinessProbe:
+            httpGet: {path: /health, port: 5000}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: aceest-live}
+spec:
+  selector: {app: aceest-shadow-demo, role: live}
+  ports: [{port: 80, targetPort: 5000}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: aceest-shadow}
+spec:
+  selector: {app: aceest-shadow-demo, role: shadow}
+  ports: [{port: 80, targetPort: 5000}]
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: aceest-shadow
+  annotations:
+    nginx.ingress.kubernetes.io/mirror-target: "http://aceest-shadow.default.svc.cluster.local$request_uri"
+    nginx.ingress.kubernetes.io/mirror-request-body: "on"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: shadow.aceest.local
+      http:
+        paths:
+          - {path: /, pathType: Prefix, backend: {service: {name: aceest-live, port: {number: 80}}}}

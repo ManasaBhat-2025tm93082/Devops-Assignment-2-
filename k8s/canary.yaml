@@ -1,0 +1,56 @@
+# Canary: 1 of 10 pods runs the new version, so roughly 10% of requests reach it.
+# Promote by scaling canary up / stable down; roll back by scaling canary to 0.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-stable
+spec:
+  replicas: 9
+  selector:
+    matchLabels: {app: aceest-canary, track: stable}
+  template:
+    metadata:
+      labels: {app: aceest-canary, track: stable}
+    spec:
+      containers:
+        - name: aceest
+          image: DOCKERHUB_USER/aceest-fitness:1.0.0
+          ports: [{containerPort: 5000}]
+          readinessProbe:
+            httpGet: {path: /health, port: 5000}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 25m, memory: 48Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aceest-canary
+spec:
+  replicas: 1
+  selector:
+    matchLabels: {app: aceest-canary, track: canary}
+  template:
+    metadata:
+      labels: {app: aceest-canary, track: canary}
+    spec:
+      containers:
+        - name: aceest
+          image: DOCKERHUB_USER/aceest-fitness:2.0.0
+          ports: [{containerPort: 5000}]
+          readinessProbe:
+            httpGet: {path: /health, port: 5000}
+            periodSeconds: 5
+          resources:
+            requests: {cpu: 25m, memory: 48Mi}
+            limits: {cpu: 200m, memory: 128Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: aceest-canary
+spec:
+  type: NodePort
+  selector: {app: aceest-canary}          # matches both stable and canary pods
+  ports: [{port: 80, targetPort: 5000, nodePort: 30083}]
