@@ -52,7 +52,7 @@ jobs:
         run: python -m pytest --cov=app --cov-report=xml
       - name: SonarQube scan
         # Pinned to a full commit SHA (supply-chain security). Replace the text after @ with the 40-character SHA.
-        uses: SonarSource/sonarqube-scan-action@PASTE_40_CHAR_COMMIT_SHA_HERE # v6
+        uses: SonarSource/sonarqube-scan-action@fd88b7d7ccbaefd23d8f36f73b59db7a3d246602 # v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
