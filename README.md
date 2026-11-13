@@ -4,7 +4,7 @@ Flask fitness/gym management application delivered through a fully automated pip
 **Git/GitHub -> Jenkins -> Pytest -> SonarQube -> Docker -> Docker Hub -> Kubernetes (Minikube)**,
 with Rolling Update, Blue-Green, Canary, Shadow and A/B deployment strategies and rollback.
 
-Repository: https://github.com/ManasaBhat-2025tm93082/Devops-Assignment_3rd-sem
+Repository: Repository: https://github.com/ManasaBhat-2025tm93082/Devops-Assignment-2-
 
 ---
 
