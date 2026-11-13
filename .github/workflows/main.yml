@@ -15,7 +15,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: "pip install --only-binary :all: -r requirements-dev.txt"
       - name: Syntax check (compile)
         run: python -m py_compile app.py
       - name: Lint with flake8
@@ -47,11 +47,12 @@ jobs:
           python-version: "3.12"
           cache: pip
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: "pip install --only-binary :all: -r requirements-dev.txt"
       - name: Run tests with coverage
         run: python -m pytest --cov=app --cov-report=xml
       - name: SonarQube scan
-        uses: SonarSource/sonarqube-scan-action@v6
+        # Pinned to a full commit SHA (supply-chain security). Replace the text after @ with the 40-character SHA.
+        uses: SonarSource/sonarqube-scan-action@PASTE_40_CHAR_COMMIT_SHA_HERE # v6
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
