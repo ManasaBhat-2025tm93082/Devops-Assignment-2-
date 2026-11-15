@@ -82,7 +82,7 @@ Podman works the same way: replace `docker` with `podman`.
 ## 6. Git Workflow and Tags
 
 ```bash
-git checkout -b feature/versioning
+git checkout -b assignment
 # ... changes ...
 git commit -m "feat: add /version endpoint and version header"
 git checkout main && git merge feature/versioning
@@ -100,7 +100,6 @@ docker run -d --name sonarqube -p 9000:9000 sonarqube:community
 2. Create a project with key `aceest-fitness`; generate a token (My Account -> Security).
 3. Add a webhook (Administration -> Configuration -> Webhooks):
    `http://<jenkins-host>:<port>/sonarqube-webhook/` so Jenkins receives the quality gate result.
-4. Export the project report (screenshots of the dashboard and quality gate) for submission.
 
 ## 8. Jenkins Configuration
 
@@ -179,16 +178,6 @@ Deploy everything at once with `scripts/deploy.sh all`. Check state with `kubect
 `.github/workflows/main.yml` runs on every push and pull request: compile check, flake8,
 Docker image build and Pytest inside the container.
 
-## 11. Troubleshooting
-
-| Problem | Fix |
-|---------|-----|
-| Jenkins: `docker: permission denied` | `sudo usermod -aG docker jenkins` and restart Jenkins |
-| Quality gate stage hangs | SonarQube webhook to `/sonarqube-webhook/` is missing |
-| Pods in `ImagePullBackOff` | Image not pushed, wrong `DOCKERHUB_USER`, or private repo |
-| A/B or shadow returns 404 | Ingress addon not enabled: `minikube addons enable ingress` |
-| Jenkins: `Cannot run program "sh"` / `Batch scripts can only be run on Windows nodes` | Use the `sh` Jenkinsfile on Linux agents, `bat` on Windows agents |
-
-## 12. Author
+## 11. Author
 
 **Manasa Bhat** - Introduction to DevOps (CSIZG514 / SEZG514), Assignment 2.
