@@ -1,7 +1,4 @@
 // ACEest Fitness & Gym - CI/CD pipeline (Linux Jenkins agent)
-// Stages: checkout -> build env -> compile -> lint -> pytest(+coverage) -> SonarQube + quality gate
-//         -> package artifact -> Docker build/test -> push to Docker Hub -> deploy to Kubernetes.
-// Docker / Kubernetes stages are skipped automatically if the agent cannot use them.
 pipeline {
     agent any
 
@@ -14,8 +11,8 @@ pipeline {
     triggers { pollSCM('H/2 * * * *') }
 
     parameters {
-        string(name: 'REGISTRY', defaultValue: 'localhost:5001', description: 'Image registry prefix (localhost:5001 or your Docker Hub username)')
-        booleanParam(name: 'RUN_SONAR', defaultValue: false, description: 'Run SonarQube analysis + quality gate (needs Jenkins SonarQube setup)')
+        string(name: 'REGISTRY', defaultValue: 'localhost:5001', description: 'Image registry prefix')
+        booleanParam(name: 'RUN_SONAR', defaultValue: true, description: 'Run SonarQube analysis + quality gate')
         booleanParam(name: 'PUSH_IMAGE', defaultValue: false, description: 'Push images to the registry')
         booleanParam(name: 'DEPLOY', defaultValue: false, description: 'Deploy to Kubernetes (Minikube)')
         choice(name: 'STRATEGY', choices: ['rolling-update', 'blue-green', 'canary', 'ab-testing', 'shadow'],
@@ -63,20 +60,24 @@ pipeline {
             post { always { junit allowEmptyResults: true, testResults: 'pytest-report.xml' } }
         }
 
-        stage('SonarQube Analysis') {
+        stage('SonarQube Analysis & Quality Gate') {
             when { expression { params.RUN_SONAR } }
             steps {
-                script { env.SCANNER_HOME = tool 'SonarScanner' }
-                withSonarQubeEnv('SonarQube') {
-                    sh '${SCANNER_HOME}/bin/sonar-scanner -Dsonar.projectVersion=${APP_VERSION}'
+                withCredentials([string(credentialsId: 'sonar-token', variable: 'SONAR_TOKEN')]) {
+                    sh '''
+                        V=7.2.0.5079
+                        D="$HOME/.sonar-scanner-cli/sonar-scanner-$V-linux-x64"
+                        if [ ! -x "$D/bin/sonar-scanner" ]; then
+                            mkdir -p "$HOME/.sonar-scanner-cli"
+                            curl -fsSLo /tmp/sonar-scanner.zip "https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-$V-linux-x64.zip"
+                            (command -v unzip > /dev/null && unzip -q -o /tmp/sonar-scanner.zip -d "$HOME/.sonar-scanner-cli") \\
+                                || python3 -m zipfile -e /tmp/sonar-scanner.zip "$HOME/.sonar-scanner-cli"
+                            chmod -R u+x "$D/bin" "$D/jre/bin" 2>/dev/null || true
+                        fi
+                        # qualitygate.wait makes the scanner poll SonarQube Cloud and fail this stage if the gate fails
+                        "$D/bin/sonar-scanner" -Dsonar.projectVersion=${APP_VERSION} -Dsonar.qualitygate.wait=true
+                    '''
                 }
-            }
-        }
-
-        stage('Quality Gate') {
-            when { expression { params.RUN_SONAR } }
-            steps {
-                timeout(time: 5, unit: 'MINUTES') { waitForQualityGate abortPipeline: true }
             }
         }
 
@@ -91,7 +92,7 @@ pipeline {
             when { expression { sh(script: 'docker info > /dev/null 2>&1', returnStatus: true) == 0 } }
             steps {
                 sh '''
-                    docker build --target base --build-arg APP_VERSION=${APP_VERSION} \
+                    docker build --target base --build-arg APP_VERSION=${APP_VERSION} \\
                         -t ${IMAGE}:${APP_VERSION} -t ${IMAGE}:build-${BUILD_NUMBER} .
                     docker build --target test -t aceest-fitness:test .
                     docker run --rm aceest-fitness:test
@@ -142,6 +143,29 @@ pipeline {
                         '''
                     }
                 }
+            }
+        }
+
+        stage('Post-deploy Smoke Test') {
+            when {
+                allOf {
+                    expression { params.DEPLOY }
+                    expression { params.STRATEGY in ['rolling-update', 'blue-green', 'canary'] }
+                }
+            }
+            steps {
+                sh '''
+                    case "${STRATEGY}" in
+                        rolling-update) PORT=30081 ;;
+                        blue-green)     PORT=30082 ;;
+                        canary)         PORT=30083 ;;
+                    esac
+                    IP=$(minikube ip)
+                    for i in 1 2 3 4 5 6; do
+                        curl -fsS http://$IP:$PORT/health && break || sleep 5
+                    done
+                    echo; curl -fsS http://$IP:$PORT/version; echo
+                '''
             }
         }
     }
