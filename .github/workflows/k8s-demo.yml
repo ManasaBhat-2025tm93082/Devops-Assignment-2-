@@ -26,7 +26,7 @@ jobs:
 
       - name: Start Minikube
         run: |
-          curl -fsSLo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
+          curl --proto '=https' --proto-redir '=https' -fsSLo minikube https://storage.googleapis.com/minikube/releases/latest/minikube-linux-amd64
           sudo install minikube /usr/local/bin/minikube
           minikube start --driver=docker --cpus=2 --memory=6144
           kubectl get nodes | tee evidence/00-cluster.log
