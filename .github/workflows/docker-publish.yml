@@ -1,0 +1,47 @@
+name: Docker Publish
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Build and push ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version: ["1.0.0", "1.1.0", "2.0.0"]
+    env:
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/aceest-fitness
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to Docker Hub
+        env:
+          DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
+          DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: echo "$DH_TOKEN" | docker login -u "$DH_USER" --password-stdin
+
+      - name: Build image
+        run: docker build --target base --build-arg APP_VERSION=${{ matrix.version }} -t "$IMAGE:${{ matrix.version }}" .
+
+      - name: Smoke test (container must answer /version)
+        run: |
+          docker run -d --name smoke -p 5000:5000 "$IMAGE:${{ matrix.version }}"
+          sleep 5
+          curl -fsS http://localhost:5000/version
+          docker rm -f smoke
+
+      - name: Push image
+        run: docker push "$IMAGE:${{ matrix.version }}"
+
+      - name: Tag and push latest (2.0.0 only)
+        if: matrix.version == '2.0.0'
+        run: |
+          docker tag "$IMAGE:2.0.0" "$IMAGE:latest"
+          docker push "$IMAGE:latest"
