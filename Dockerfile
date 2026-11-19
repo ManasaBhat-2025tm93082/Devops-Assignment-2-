@@ -15,7 +15,7 @@ USER appuser
 EXPOSE 5000
 HEALTHCHECK --interval=30s --timeout=3s \
   CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')" || exit 1
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
+CMD ["gunicorn", "--access-logfile", "-", "-b", "0.0.0.0:5000", "app:app"]
 
 # ---------- Stage 2: test image (adds pytest + tests) ----------
 FROM base AS test
