@@ -1,7 +1,5 @@
 name: Kubernetes Deployment Demo
 
-# Starts Minikube on a GitHub runner, deploys all five strategies and demonstrates rollback.
-# Run: Actions tab -> Kubernetes Deployment Demo -> Run workflow. Evidence is uploaded as an artifact.
 on:
   workflow_dispatch:
 
@@ -13,9 +11,11 @@ jobs:
     name: Minikube deployment strategies
     runs-on: ubuntu-latest
     timeout-minutes: 40
+
     env:
       DOCKERHUB_USER: local
       IMG: local/aceest-fitness
+
     steps:
       - uses: actions/checkout@v4
 
@@ -53,35 +53,50 @@ jobs:
             bash scripts/deploy.sh rolling-update
             kubectl rollout status deployment/aceest-rolling --timeout=120s
             IP=$(minikube ip)
-            echo "--- initial version"; curl -s $IP:30081/version; echo
+            echo "--- initial version"
+            curl -s $IP:30081/version
+            echo
             echo "--- update to 1.1.0"
             kubectl set image deployment/aceest-rolling aceest=$IMG:1.1.0
             kubectl rollout status deployment/aceest-rolling --timeout=120s
-            curl -s $IP:30081/version; echo
+            curl -s $IP:30081/version
+            echo
             echo "--- deploy a broken version (9.9.9) to trigger a failed rollout"
             kubectl set image deployment/aceest-rolling aceest=$IMG:9.9.9
             kubectl rollout status deployment/aceest-rolling --timeout=60s || echo "ROLLOUT FAILED (expected)"
             kubectl get pods
-            echo "--- service still answers during the failed rollout"; curl -s $IP:30081/version; echo
+            echo "--- service still answers during the failed rollout"
+            curl -s $IP:30081/version
+            echo
             echo "--- rollback"
             bash scripts/rollback.sh rolling
             kubectl rollout history deployment/aceest-rolling
-            curl -s $IP:30081/version; echo
+            curl -s $IP:30081/version
+            echo
           } 2>&1 | tee evidence/10-rolling-update.log
-
       - name: Blue-green and rollback
         run: |
           {
             bash scripts/deploy.sh blue-green
             kubectl rollout status deployment/aceest-blue --timeout=120s
             kubectl rollout status deployment/aceest-green --timeout=120s
+
             IP=$(minikube ip)
-            echo "--- traffic on blue"; curl -s $IP:30082/version; echo
+
+            echo "--- traffic on blue"
+            curl -s $IP:30082/version
+            echo
+
             bash scripts/switch-blue-green.sh green
-            echo "--- traffic on green"; curl -s $IP:30082/version; echo
+
+            echo "--- traffic on green"
+            curl -s $IP:30082/version
+            echo
+
             echo "--- rollback to blue"
             bash scripts/rollback.sh blue-green
-            curl -s $IP:30082/version; echo
+            curl -s $IP:30082/version
+            echo
           } 2>&1 | tee evidence/20-blue-green.log
 
       - name: Canary and rollback
@@ -90,40 +105,74 @@ jobs:
             bash scripts/deploy.sh canary
             kubectl rollout status deployment/aceest-stable --timeout=120s
             kubectl rollout status deployment/aceest-canary --timeout=120s
+
             IP=$(minikube ip)
+
             echo "--- 40 requests (about 10% should reach 2.0.0)"
-            for i in $(seq 1 40); do curl -s $IP:30083/version | grep -o '"version":"[0-9.]*"'; done | sort | uniq -c
+            for i in $(seq 1 40); do
+              curl -s $IP:30083/version | grep -o '"version":"[0-9.]*"'
+            done | sort | uniq -c
+
             echo "--- rollback: canary scaled to 0"
             bash scripts/rollback.sh canary
             sleep 10
-            for i in $(seq 1 20); do curl -s $IP:30083/version | grep -o '"version":"[0-9.]*"'; done | sort | uniq -c
+
+            for i in $(seq 1 20); do
+              curl -s $IP:30083/version | grep -o '"version":"[0-9.]*"'
+            done | sort | uniq -c
           } 2>&1 | tee evidence/30-canary.log
 
       - name: A/B testing
         run: |
           {
-            for i in 1 2 3 4 5; do bash scripts/deploy.sh ab-testing && break || sleep 15; done
+            for i in 1 2 3 4 5; do
+              bash scripts/deploy.sh ab-testing && break || sleep 15
+            done
+
             kubectl rollout status deployment/aceest-ab-a --timeout=120s
             kubectl rollout status deployment/aceest-ab-b --timeout=120s
             sleep 10
+
             IP=$(minikube ip)
+
             echo "--- no header (variant A)"
-            curl -s --resolve ab.aceest.local:80:$IP http://ab.aceest.local/version; echo
+
+            # Intentional HTTP: local Minikube Ingress demo without TLS.
+            curl -s --resolve ab.aceest.local:80:$IP http://ab.aceest.local/version
+            echo
+
             echo "--- header X-Variant: B"
-            curl -s --resolve ab.aceest.local:80:$IP -H "X-Variant: B" http://ab.aceest.local/version; echo
+
+            # Intentional HTTP: local Minikube Ingress demo without TLS.
+            curl -s --resolve ab.aceest.local:80:$IP \
+              -H "X-Variant: B" http://ab.aceest.local/version
+            echo
           } 2>&1 | tee evidence/40-ab-testing.log
 
       - name: Shadow deployment
         run: |
           {
-            for i in 1 2 3 4 5; do bash scripts/deploy.sh shadow && break || sleep 15; done
+            for i in 1 2 3 4 5; do
+              bash scripts/deploy.sh shadow && break || sleep 15
+            done
+
             kubectl rollout status deployment/aceest-live --timeout=120s
             kubectl rollout status deployment/aceest-shadow --timeout=120s
             sleep 10
+
             IP=$(minikube ip)
+
             echo "--- clients only see the live version"
-            for i in 1 2 3 4 5; do curl -s --resolve shadow.aceest.local:80:$IP http://shadow.aceest.local/version; echo; done
+
+            # Intentional HTTP: local Minikube Ingress demo without TLS.
+            for i in 1 2 3 4 5; do
+              curl -s --resolve shadow.aceest.local:80:$IP \
+                http://shadow.aceest.local/version
+              echo
+            done
+
             sleep 3
+
             echo "--- shadow pod received mirrored copies of the requests"
             kubectl logs deployment/aceest-shadow --tail=20
           } 2>&1 | tee evidence/50-shadow.log
